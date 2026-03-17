@@ -1,9 +1,9 @@
 using System.CommandLine;
 using System.Text.Json;
 using Newtonsoft.Json.Linq;
-using Khaos.JEX;
+using KoreForge.Jex;
 
-namespace Khaos.JEX.Cli;
+namespace KF.Jex.Cli;
 
 /// <summary>
 /// JEX CLI - Execute JEX transformation scripts from the command line.
@@ -110,7 +110,7 @@ public class Program
                 meta = JToken.Parse(metaJson);
             }
 
-            var jex = new Jex();
+            var jex = new JexEngine();
             var program = jex.Compile(script);
             var output = program.Execute(input, meta);
 
@@ -180,7 +180,7 @@ public class Program
         }
     }
 
-    private static Dictionary<string, object?> ExtractVariables(Jex jex)
+    private static Dictionary<string, object?> ExtractVariables(JexEngine jex)
     {
         // Note: This would need JEX to expose variable state after execution
         // For now, return empty - can be enhanced if JEX exposes this

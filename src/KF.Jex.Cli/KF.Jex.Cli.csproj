@@ -5,7 +5,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>Khaos.JEX.Cli</RootNamespace>
+    <RootNamespace>KF.Jex.Cli</RootNamespace>
     <AssemblyName>jex</AssemblyName>
   </PropertyGroup>
 
@@ -15,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\Khaos.Jex\src\Khaos.JEX\Khaos.JEX.csproj" />
+    <ProjectReference Include="..\..\..\KoreForge.Jex\src\KF.Jex\KF.Jex.csproj" />
   </ItemGroup>
 
 </Project>

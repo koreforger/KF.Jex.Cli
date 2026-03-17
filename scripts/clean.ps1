@@ -4,7 +4,10 @@
 #>
 
 [CmdletBinding()]
-param()
+param(
+    [ValidateSet('Debug', 'Release')]
+    [string]$Configuration = 'Release'
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

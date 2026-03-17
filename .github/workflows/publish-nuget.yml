@@ -3,7 +3,7 @@ name: Publish to NuGet (Trusted Publishing)
 on:
   push:
     tags:
-      - 'Khaos.JEX.Cli/v*'
+      - 'KhaosKode.JEX.Cli/v*'
 
 permissions:
   contents: read
@@ -19,27 +19,27 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Restore
-        run: dotnet restore Khaos.JEX.Cli.sln
+        run: dotnet restore KhaosKode.JEX.Cli.sln
 
       - name: Build
-        run: dotnet build Khaos.JEX.Cli.sln --configuration Release --no-restore
+        run: dotnet build KhaosKode.JEX.Cli.sln --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test Khaos.JEX.Cli.sln --configuration Release --no-build
+        run: dotnet test KhaosKode.JEX.Cli.sln --configuration Release --no-build
 
       - name: Pack
         run: |
-          TAG_NAME="${GITHUB_REF_NAME#Khaos.JEX.Cli/}"
+          TAG_NAME="${GITHUB_REF_NAME#KhaosKode.JEX.Cli/}"
           VERSION="${TAG_NAME#v}"
           if [[ -z "$VERSION" || "$VERSION" == "$TAG_NAME" ]]; then
             echo "Unable to parse package version from tag '$GITHUB_REF_NAME'." >&2
             exit 1
           fi
 
-          dotnet pack src/Khaos.JEX.Cli/Khaos.JEX.Cli.csproj \
+          dotnet pack src/KhaosKode.JEX.Cli/KhaosKode.JEX.Cli.csproj \
             --configuration Release \
             --no-build \
             -p:PackageVersion=$VERSION \
