@@ -1,0 +1,30 @@
+## .NET build outputs
+bin/
+!/bin/
+obj/
+out/
+artifacts/*.nupkg
+artifacts/*.snupkg
+
+## Visual Studio
+.vs/
+*.user
+*.suo
+
+## NuGet
+*.nupkg
+*.snupkg
+.nuget/
+
+## Test results
+TestResults/
+coverage.info
+coverage.cobertura.xml
+*.trx
+
+## Rider
+.idea/
+
+## OS
+.DS_Store
+Thumbs.db
