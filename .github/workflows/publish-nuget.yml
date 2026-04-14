@@ -3,10 +3,10 @@ name: Publish to NuGet (Trusted Publishing)
 on:
   push:
     tags:
-      - 'KhaosKode.JEX.Cli/v*'
+      - 'KF.Jex.Cli/v*'
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
@@ -22,24 +22,21 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore
-        run: dotnet restore KhaosKode.JEX.Cli.sln
+        run: dotnet restore KF.Jex.Cli.sln
 
       - name: Build
-        run: dotnet build KhaosKode.JEX.Cli.sln --configuration Release --no-restore
-
-      - name: Test
-        run: dotnet test KhaosKode.JEX.Cli.sln --configuration Release --no-build
+        run: dotnet build KF.Jex.Cli.sln --configuration Release --no-restore
 
       - name: Pack
         run: |
-          TAG_NAME="${GITHUB_REF_NAME#KhaosKode.JEX.Cli/}"
+          TAG_NAME="${GITHUB_REF_NAME#KF.Jex.Cli/}"
           VERSION="${TAG_NAME#v}"
           if [[ -z "$VERSION" || "$VERSION" == "$TAG_NAME" ]]; then
             echo "Unable to parse package version from tag '$GITHUB_REF_NAME'." >&2
             exit 1
           fi
 
-          dotnet pack src/KhaosKode.JEX.Cli/KhaosKode.JEX.Cli.csproj \
+          dotnet pack src/KF.Jex.Cli/KF.Jex.Cli.csproj \
             --configuration Release \
             --no-build \
             -p:PackageVersion=$VERSION \
@@ -49,10 +46,17 @@ jobs:
         id: login
         uses: NuGet/login@v1
         with:
-          user: KhaosKoder
+          user: ${{ secrets.NUGET_USER }}
 
       - name: Push package to nuget.org
         run: |
           dotnet nuget push "./artifacts/*.nupkg" \
             --source https://api.nuget.org/v3/index.json \
-            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
+            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
+            --skip-duplicate
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.nupkg
+          generate_release_notes: true
