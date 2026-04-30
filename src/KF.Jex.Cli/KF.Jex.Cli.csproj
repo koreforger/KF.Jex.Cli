@@ -15,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\KoreForge.Jex\src\KF.Jex\KF.Jex.csproj" />
+    <PackageReference Include="KoreForge.Jex" Version="0.0.11-alpha" />
   </ItemGroup>
 
 </Project>
