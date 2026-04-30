@@ -18,10 +18,10 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore
-        run: dotnet restore KhaosKode.JEX.Cli.sln
+        run: dotnet restore KF.Jex.Cli.slnx
 
       - name: Build
-        run: dotnet build KhaosKode.JEX.Cli.sln --configuration Release --no-restore
+        run: dotnet build KF.Jex.Cli.slnx --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test KhaosKode.JEX.Cli.sln --configuration Release --no-build --verbosity normal
+        run: dotnet test KF.Jex.Cli.slnx --configuration Release --no-build --verbosity normal

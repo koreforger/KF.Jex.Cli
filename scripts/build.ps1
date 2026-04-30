@@ -13,9 +13,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$solutionFile = Get-ChildItem -Path $repoRoot -Filter '*.sln' -File | Select-Object -First 1
+$solutionFile = Get-ChildItem -Path $repoRoot -Filter '*.slnx' -File | Select-Object -First 1
 
-if (-not $solutionFile) { throw "No solution file found in $repoRoot" }
+if (-not $solutionFile) { throw "No .slnx solution file found in $repoRoot" }
 
 $solutionPath = $solutionFile.FullName
 $solutionName = $solutionFile.BaseName
