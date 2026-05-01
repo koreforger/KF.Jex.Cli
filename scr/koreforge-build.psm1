@@ -5,6 +5,44 @@ function Get-KfRepoRoot {
     (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
 
+function Get-KfWorkspaceRoot {
+    param([Parameter(Mandatory)][string]$RepoRoot)
+
+    if (-not [string]::IsNullOrWhiteSpace($env:KFO_WORKSPACE_ROOT) -and (Test-Path $env:KFO_WORKSPACE_ROOT)) {
+        return (Resolve-Path $env:KFO_WORKSPACE_ROOT).Path
+    }
+
+    $current = Get-Item -Path $RepoRoot
+    while ($current) {
+        if (Test-Path (Join-Path $current.FullName 'builder-v5.config.json')) {
+            return $current.FullName
+        }
+        $current = $current.Parent
+    }
+
+    return $RepoRoot
+}
+
+function Get-KfArtifactRoot {
+    param([Parameter(Mandatory)][string]$RepoRoot)
+
+    if (-not [string]::IsNullOrWhiteSpace($env:KFO_ARTIFACTS_ROOT)) {
+        return $env:KFO_ARTIFACTS_ROOT
+    }
+
+    return Join-Path (Get-KfWorkspaceRoot -RepoRoot $RepoRoot) 'artifacts'
+}
+
+function Get-KfRepoArtifactPath {
+    param(
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [Parameter(Mandatory)][string]$ChildPath
+    )
+
+    $repoName = Split-Path $RepoRoot -Leaf
+    return Join-Path (Get-KfArtifactRoot -RepoRoot $RepoRoot) (Join-Path 'repos' (Join-Path $repoName $ChildPath))
+}
+
 function Get-KfBuildTarget {
     param([Parameter(Mandatory)][string]$RepoRoot)
 
@@ -20,30 +58,45 @@ function Get-KfBuildTarget {
 function Ensure-KfLocalNuGetSources {
     param([Parameter(Mandatory)][string]$RepoRoot)
 
-    $nugetConfig = Join-Path $RepoRoot 'NuGet.config'
-    if (-not (Test-Path $nugetConfig)) { return }
+    $workspaceRoot = Get-KfWorkspaceRoot -RepoRoot $RepoRoot
+    $nugetConfigs = @(
+        (Join-Path $RepoRoot 'NuGet.config'),
+        (Join-Path $workspaceRoot 'NuGet.config')
+    ) | Sort-Object -Unique
 
-    try { [xml]$config = Get-Content -Path $nugetConfig -Raw }
-    catch { return }
+    foreach ($nugetConfig in $nugetConfigs) {
+        if (-not (Test-Path $nugetConfig)) { continue }
 
-    $sources = @($config.configuration.packageSources.add)
-    foreach ($source in $sources) {
-        $value = [string]$source.value
-        if ([string]::IsNullOrWhiteSpace($value)) { continue }
-        if ($value -match '^[a-zA-Z][a-zA-Z0-9+.-]*://') { continue }
+        try { [xml]$config = Get-Content -Path $nugetConfig -Raw }
+        catch { continue }
 
-        $path = if ([System.IO.Path]::IsPathRooted($value)) { $value } else { Join-Path $RepoRoot $value }
-        New-Item -Path $path -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+        $configRoot = Split-Path $nugetConfig -Parent
+        $sources = @($config.configuration.packageSources.add)
+        foreach ($source in $sources) {
+            $value = [string]$source.value
+            if ([string]::IsNullOrWhiteSpace($value)) { continue }
+            if ($value -match '^[a-zA-Z][a-zA-Z0-9+.-]*://') { continue }
+
+            $path = if ([System.IO.Path]::IsPathRooted($value)) { $value } else { Join-Path $configRoot $value }
+            New-Item -Path $path -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+        }
     }
 }
 
 function Invoke-KfDotNet {
     param([Parameter(Mandatory)][string[]]$Arguments)
 
-    Write-Host "dotnet $($Arguments -join ' ')" -ForegroundColor DarkCyan
-    & dotnet @Arguments
+    $effectiveArguments = @($Arguments)
+    if ($effectiveArguments.Count -gt 0 -and $effectiveArguments[0] -in @('build', 'test', 'pack', 'clean')) {
+        $repoRoot = (Get-Location).Path
+        $buildRoot = Get-KfRepoArtifactPath -RepoRoot $repoRoot -ChildPath 'build'
+        $effectiveArguments += @('--artifacts-path', $buildRoot)
+    }
+
+    Write-Host "dotnet $($effectiveArguments -join ' ')" -ForegroundColor DarkCyan
+    & dotnet @effectiveArguments
     if ($LASTEXITCODE -ne 0) {
-        throw "dotnet command failed with exit code ${LASTEXITCODE}: dotnet $($Arguments -join ' ')"
+        throw "dotnet command failed with exit code ${LASTEXITCODE}: dotnet $($effectiveArguments -join ' ')"
     }
 }
 
@@ -107,17 +160,45 @@ function Get-KfBenchmarkProjects {
         Where-Object { $_.BaseName -match 'Benchmark' -or (Test-KfProjectContains -Project $_ -Pattern 'BenchmarkDotNet') }
 }
 
+function Get-KfPackableProjects {
+    param([Parameter(Mandatory)][string]$RepoRoot)
+
+    Get-KfProjectFiles -RepoRoot $RepoRoot |
+        Where-Object { -not (Test-KfProjectContains -Project $_ -Pattern '<IsPackable>false</IsPackable>') } |
+        Where-Object { -not (Test-KfProjectContains -Project $_ -Pattern 'Microsoft.NET.Test.Sdk') } |
+        Where-Object { $_.FullName -notmatch '\\(templates?|samples?|benchmarks?)\\' }
+}
+
+function Get-KfVersionProperties {
+    param([Parameter(Mandatory)][string]$Version)
+
+    $versionCore = ($Version -split '-', 2)[0]
+    $parts = @($versionCore -split '\.')
+    if ($parts.Count -lt 3) {
+        throw "Version must include major, minor, and patch parts: $Version"
+    }
+
+    [pscustomobject]@{
+        Version = $versionCore
+        PackageVersion = $Version
+        AssemblyVersion = "$($parts[0]).$($parts[1]).0.0"
+        FileVersion = "$($parts[0]).$($parts[1]).$($parts[2]).0"
+    }
+}
+
 function Invoke-KfClean {
     param([string]$Configuration = 'Debug')
 
     $repoRoot = Get-KfRepoRoot
     $target = Get-KfBuildTarget -RepoRoot $repoRoot
+    $repoArtifacts = Get-KfRepoArtifactPath -RepoRoot $repoRoot -ChildPath ''
 
     Push-Location $repoRoot
     try {
         Invoke-KfDotNet @('clean', $target, '-c', $Configuration, '--verbosity', 'minimal')
-        Remove-Item 'out', 'artifacts' -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Host 'Clean complete.' -ForegroundColor Green
+        Remove-Item $repoArtifacts -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item 'out', 'artifacts', 'TestResults', 'coverage-report', 'BenchmarkDotNet.Artifacts' -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "Clean complete. Repo artifacts: $repoArtifacts" -ForegroundColor Green
     }
     finally { Pop-Location }
 }
@@ -143,6 +224,7 @@ function Invoke-KfTest {
     $repoRoot = Get-KfRepoRoot
     $target = Get-KfBuildTarget -RepoRoot $repoRoot
     $testProjects = @(Get-KfTestProjects -RepoRoot $repoRoot)
+    $testResultsPath = Get-KfRepoArtifactPath -RepoRoot $repoRoot -ChildPath 'test-results'
 
     Push-Location $repoRoot
     try {
@@ -154,16 +236,19 @@ function Invoke-KfTest {
         Ensure-KfLocalNuGetSources -RepoRoot $repoRoot
         Invoke-KfDotNet @('build', $target, '--force', '-c', $Configuration)
 
-        New-Item -Path 'out/TestResults' -ItemType Directory -Force | Out-Null
-        Invoke-KfDotNet @(
-            'test', $target,
-            '-c', $Configuration,
-            '--no-build',
-            '--filter', 'FullyQualifiedName!~Integration',
-            '--logger', 'html;LogFileName=TestResults.html',
-            '--results-directory', 'out/TestResults'
-        )
-        Write-Host 'Test results: out/TestResults/TestResults.html' -ForegroundColor Green
+        New-Item -Path $testResultsPath -ItemType Directory -Force | Out-Null
+        foreach ($project in $testProjects) {
+            $logName = "$($project.BaseName)-TestResults.html"
+            Invoke-KfDotNet @(
+                'test', $project.FullName,
+                '-c', $Configuration,
+                '--no-build',
+                '--filter', 'FullyQualifiedName!~Integration',
+                '--logger', "html;LogFileName=$logName",
+                '--results-directory', $testResultsPath
+            )
+        }
+        Write-Host "Test results: $testResultsPath" -ForegroundColor Green
     }
     finally { Pop-Location }
 }
@@ -177,6 +262,9 @@ function Invoke-KfCoverage {
     $repoRoot = Get-KfRepoRoot
     $target = Get-KfBuildTarget -RepoRoot $repoRoot
     $testProjects = @(Get-KfTestProjects -RepoRoot $repoRoot)
+    $testResultsPath = Get-KfRepoArtifactPath -RepoRoot $repoRoot -ChildPath 'test-results'
+    $coveragePath = Get-KfRepoArtifactPath -RepoRoot $repoRoot -ChildPath 'coverage'
+    $toolPath = Get-KfRepoArtifactPath -RepoRoot $repoRoot -ChildPath 'tools'
 
     Push-Location $repoRoot
     try {
@@ -188,14 +276,14 @@ function Invoke-KfCoverage {
         Ensure-KfLocalNuGetSources -RepoRoot $repoRoot
         Invoke-KfDotNet @('build', $target, '--force', '-c', $Configuration)
 
-        New-Item -Path 'out/TestResults' -ItemType Directory -Force | Out-Null
+        New-Item -Path $testResultsPath -ItemType Directory -Force | Out-Null
         $testArgs = @(
             'test', $target,
             '-c', $Configuration,
             '--no-build',
             '--filter', 'FullyQualifiedName!~Integration',
-            '--logger', 'html;LogFileName=TestResults.html',
-            '--results-directory', 'out/TestResults',
+            '--logger', 'html;LogFilePrefix=TestResults',
+            '--results-directory', $testResultsPath,
             '--collect', 'XPlat Code Coverage'
         )
 
@@ -205,15 +293,16 @@ function Invoke-KfCoverage {
 
         Invoke-KfDotNet $testArgs
 
-        $coverageFiles = @(Get-ChildItem -Path 'out/TestResults' -Recurse -File -Filter 'coverage.cobertura.xml' -ErrorAction SilentlyContinue)
+        $coverageFiles = @(Get-ChildItem -Path $testResultsPath -Recurse -File -Filter 'coverage.cobertura.xml' -ErrorAction SilentlyContinue)
         if ($coverageFiles.Count -eq 0) {
             Write-Host 'No Cobertura coverage files were produced.' -ForegroundColor Yellow
             return
         }
 
+        New-Item -Path $coveragePath -ItemType Directory -Force | Out-Null
         $reportArgs = @(
-            '-reports:out/TestResults/**/coverage.cobertura.xml',
-            '-targetdir:out/TestResults/coverage',
+            "-reports:$testResultsPath/**/coverage.cobertura.xml",
+            "-targetdir:$coveragePath",
             '-reporttypes:Html;Cobertura'
         )
 
@@ -225,18 +314,18 @@ function Invoke-KfCoverage {
             Invoke-KfNativeCommand -FilePath 'reportgenerator' -Arguments $reportArgs
         }
         else {
-            $toolPath = Join-Path $repoRoot 'out/tools'
             New-Item -Path $toolPath -ItemType Directory -Force | Out-Null
             Invoke-KfDotNet @('tool', 'install', 'dotnet-reportgenerator-globaltool', '--tool-path', $toolPath)
             $reportGenerator = Join-Path $toolPath 'reportgenerator'
             Invoke-KfNativeCommand -FilePath $reportGenerator -Arguments $reportArgs
         }
 
-        if ($Open) {
-            Invoke-Item (Resolve-Path 'out/TestResults/coverage/index.html')
+        $coverageIndex = Join-Path $coveragePath 'index.html'
+        if ($Open -and (Test-Path $coverageIndex)) {
+            Invoke-Item (Resolve-Path $coverageIndex)
         }
 
-        Write-Host 'Coverage report: out/TestResults/coverage/index.html' -ForegroundColor Green
+        Write-Host "Coverage report: $coverageIndex" -ForegroundColor Green
     }
     finally { Pop-Location }
 }
@@ -247,6 +336,7 @@ function Invoke-KfIntegration {
     $repoRoot = Get-KfRepoRoot
     $target = Get-KfBuildTarget -RepoRoot $repoRoot
     $integrationProjects = @(Get-KfTestProjects -RepoRoot $repoRoot -Integration)
+    $testResultsPath = Get-KfRepoArtifactPath -RepoRoot $repoRoot -ChildPath 'test-results/integration'
 
     Push-Location $repoRoot
     try {
@@ -258,7 +348,7 @@ function Invoke-KfIntegration {
         Ensure-KfLocalNuGetSources -RepoRoot $repoRoot
         Invoke-KfDotNet @('build', $target, '--force', '-c', $Configuration)
 
-        New-Item -Path 'out/TestResults' -ItemType Directory -Force | Out-Null
+        New-Item -Path $testResultsPath -ItemType Directory -Force | Out-Null
         foreach ($project in $integrationProjects) {
             $relativeProject = Get-KfRelativePath -RepoRoot $repoRoot -Path $project.FullName
             $logName = "$($project.BaseName).trx"
@@ -267,11 +357,11 @@ function Invoke-KfIntegration {
                 '-c', $Configuration,
                 '--no-build',
                 '--logger', "trx;LogFileName=$logName",
-                '--results-directory', 'out/TestResults'
+                '--results-directory', $testResultsPath
             )
         }
 
-        Write-Host 'Test results: out/TestResults' -ForegroundColor Green
+        Write-Host "Test results: $testResultsPath" -ForegroundColor Green
     }
     finally { Pop-Location }
 }
@@ -281,6 +371,7 @@ function Invoke-KfBenchmark {
 
     $repoRoot = Get-KfRepoRoot
     $benchmarkProjects = @(Get-KfBenchmarkProjects -RepoRoot $repoRoot)
+    $benchmarkPath = Get-KfRepoArtifactPath -RepoRoot $repoRoot -ChildPath 'benchmarks'
 
     Push-Location $repoRoot
     try {
@@ -289,12 +380,13 @@ function Invoke-KfBenchmark {
             return
         }
 
+        New-Item -Path $benchmarkPath -ItemType Directory -Force | Out-Null
         foreach ($project in $benchmarkProjects) {
             $relativeProject = Get-KfRelativePath -RepoRoot $repoRoot -Path $project.FullName
-            Invoke-KfDotNet @('run', '--project', $relativeProject, '-c', $Configuration, '--')
+            Invoke-KfDotNet @('run', '--project', $relativeProject, '-c', $Configuration, '--', '--artifacts', $benchmarkPath)
         }
 
-        Write-Host 'Benchmark complete.' -ForegroundColor Green
+        Write-Host "Benchmark artifacts: $benchmarkPath" -ForegroundColor Green
     }
     finally { Pop-Location }
 }
@@ -307,17 +399,30 @@ function Invoke-KfPack {
     )
 
     $repoRoot = Get-KfRepoRoot
-    $target = Get-KfBuildTarget -RepoRoot $repoRoot
+    $packableProjects = @(Get-KfPackableProjects -RepoRoot $repoRoot)
+    $packagePath = Get-KfRepoArtifactPath -RepoRoot $repoRoot -ChildPath 'packages'
 
     Push-Location $repoRoot
     try {
         Ensure-KfLocalNuGetSources -RepoRoot $repoRoot
-        New-Item -Path 'artifacts' -ItemType Directory -Force | Out-Null
-        $args = @('pack', $target, '-c', $Configuration, '-o', 'artifacts')
-        if ($NoBuild) { $args += '--no-build' }
-        if ($Version) { $args += @('/p:PackageVersion=' + $Version, '/p:Version=' + $Version) }
-        Invoke-KfDotNet $args
-        Write-Host 'Packages written to artifacts/.' -ForegroundColor Green
+        New-Item -Path $packagePath -ItemType Directory -Force | Out-Null
+        foreach ($project in $packableProjects) {
+            $dotnetArgs = @('pack', $project.FullName, '-c', $Configuration, '-o', $packagePath)
+            if ($NoBuild) { $dotnetArgs += '--no-build' }
+            if ($Version) {
+                $versions = Get-KfVersionProperties -Version $Version
+                $dotnetArgs += @(
+                    "/p:MinVerSkip=true",
+                    "/p:Version=$($versions.Version)",
+                    "/p:PackageVersion=$($versions.PackageVersion)",
+                    "/p:AssemblyVersion=$($versions.AssemblyVersion)",
+                    "/p:FileVersion=$($versions.FileVersion)"
+                )
+            }
+
+            Invoke-KfDotNet -Arguments $dotnetArgs
+        }
+        Write-Host "Packages written to $packagePath" -ForegroundColor Green
     }
     finally { Pop-Location }
 }
@@ -393,30 +498,31 @@ function Invoke-KfReleaseNuGetFromLocal {
     $repoRoot = Get-KfRepoRoot
     $target = Get-KfBuildTarget -RepoRoot $repoRoot
     $testProjects = @(Get-KfTestProjects -RepoRoot $repoRoot)
+    $testResultsPath = Get-KfRepoArtifactPath -RepoRoot $repoRoot -ChildPath 'test-results/release'
 
     Push-Location $repoRoot
     try {
-        Remove-Item 'artifacts' -Recurse -Force -ErrorAction SilentlyContinue
         Ensure-KfLocalNuGetSources -RepoRoot $repoRoot
         Invoke-KfDotNet @('build', $target, '--force', '-c', 'Release')
 
         if ($testProjects.Count -gt 0) {
-            New-Item -Path 'out/TestResults' -ItemType Directory -Force | Out-Null
+            New-Item -Path $testResultsPath -ItemType Directory -Force | Out-Null
             Invoke-KfDotNet @(
                 'test', $target,
                 '-c', 'Release',
                 '--no-build',
                 '--filter', 'FullyQualifiedName!~Integration',
                 '--logger', 'html;LogFileName=TestResults.html',
-                '--results-directory', 'out/TestResults'
+                '--results-directory', $testResultsPath
             )
         }
 
         Invoke-KfPack -Configuration 'Release' -Version $Version -NoBuild
 
-        $packages = @(Get-ChildItem -Path 'artifacts' -Filter '*.nupkg' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*.symbols.nupkg' })
+        $packagePath = Get-KfRepoArtifactPath -RepoRoot $repoRoot -ChildPath 'packages'
+        $packages = @(Get-ChildItem -Path $packagePath -Filter '*.nupkg' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*.symbols.nupkg' })
         if ($packages.Count -eq 0) {
-            throw 'No NuGet packages were produced under artifacts/.'
+            throw "No NuGet packages were produced under $packagePath."
         }
 
         foreach ($package in $packages) {
@@ -429,7 +535,6 @@ function Invoke-KfReleaseNuGetFromLocal {
     }
     finally { Pop-Location }
 }
-
 
 
 
