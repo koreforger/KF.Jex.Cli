@@ -12,7 +12,7 @@ The CLI is bundled with the VS Code extension. You can also build it standalone:
 
 ```powershell
 cd KF.Jex.Cli
-.\scripts\build.ps1
+.\scr\build-rebuild.ps1
 ```
 
 ## Usage
@@ -114,3 +114,5 @@ This CLI is used by the VS Code extension's "Run Script" and "Preview" features.
 ## License
 
 MIT License - See [LICENSE.md](LICENSE.md)
+
+
