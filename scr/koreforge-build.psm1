@@ -14,7 +14,7 @@ function Get-KfWorkspaceRoot {
 
     $current = Get-Item -Path $RepoRoot
     while ($current) {
-        if (Test-Path (Join-Path $current.FullName 'builder-v5.config.json')) {
+        if (Test-Path (Join-Path $current.FullName 'builder.config.json')) {
             return $current.FullName
         }
         $current = $current.Parent
