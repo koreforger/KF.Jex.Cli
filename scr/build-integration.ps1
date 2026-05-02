@@ -5,5 +5,5 @@ param(
 )
 
 Import-Module (Join-Path $PSScriptRoot 'koreforge-build.psm1') -Force -DisableNameChecking
-Invoke-KfIntegration -Configuration $Configuration
+Invoke-KoreForgeIntegration -Configuration $Configuration
 

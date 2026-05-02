@@ -6,5 +6,5 @@ param(
 )
 
 Import-Module (Join-Path $PSScriptRoot 'koreforge-build.psm1') -Force -DisableNameChecking
-Invoke-KfCoverage -Configuration $Configuration -Open:$Open
+Invoke-KoreForgeCoverage -Configuration $Configuration -Open:$Open
 

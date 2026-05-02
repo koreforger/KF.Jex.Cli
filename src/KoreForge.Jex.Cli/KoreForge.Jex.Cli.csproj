@@ -1,21 +1,18 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>KF.Jex.Cli</RootNamespace>
+    <RootNamespace>KoreForge.Jex.Cli</RootNamespace>
     <AssemblyName>jex</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
-
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
   </ItemGroup>
-
   <ItemGroup>
-    <PackageReference Include="KoreForge.Jex" Version="0.0.11-alpha" />
+    <PackageReference Include="KoreForge.Jex" Version="1.0.1-alpha" />
   </ItemGroup>
-
 </Project>

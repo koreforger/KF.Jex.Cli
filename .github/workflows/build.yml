@@ -18,10 +18,10 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore
-        run: dotnet restore KF.Jex.Cli.slnx
+        run: dotnet restore KoreForge.Jex.Cli.slnx
 
       - name: Build
-        run: dotnet build KF.Jex.Cli.slnx --configuration Release --no-restore
+        run: dotnet build KoreForge.Jex.Cli.slnx --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test KF.Jex.Cli.slnx --configuration Release --no-build --verbosity normal
+        run: dotnet test KoreForge.Jex.Cli.slnx --configuration Release --no-build --verbosity normal

@@ -35,4 +35,4 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 }
 
 Import-Module (Join-Path $PSScriptRoot 'koreforge-build.psm1') -Force -DisableNameChecking
-Invoke-KfReleaseNuGetFromLocal -Version $Version -ApiKey $ApiKey -Source $Source -SkipDuplicate:$SkipDuplicate
+Invoke-KoreForgeReleaseNuGetFromLocal -Version $Version -ApiKey $ApiKey -Source $Source -SkipDuplicate:$SkipDuplicate

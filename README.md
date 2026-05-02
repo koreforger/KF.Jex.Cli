@@ -1,4 +1,4 @@
-# KF.Jex.Cli
+# KoreForge.Jex.Cli
 
 A command-line interface for executing JEX transformation scripts.
 
@@ -11,7 +11,7 @@ This CLI allows you to run JEX scripts directly from the terminal without writin
 The CLI is bundled with the VS Code extension. You can also build it standalone:
 
 ```powershell
-cd KF.Jex.Cli
+cd KoreForge.Jex.Cli
 .\scr\build-rebuild.ps1
 ```
 

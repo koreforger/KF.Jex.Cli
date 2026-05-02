@@ -3,7 +3,7 @@ using System.Text.Json;
 using Newtonsoft.Json.Linq;
 using KoreForge.Jex;
 
-namespace KF.Jex.Cli;
+namespace KoreForge.Jex.Cli;
 
 /// <summary>
 /// JEX CLI - Execute JEX transformation scripts from the command line.
