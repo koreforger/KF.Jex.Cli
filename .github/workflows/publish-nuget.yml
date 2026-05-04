@@ -15,6 +15,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is on main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "${{ github.sha }}" origin/main \
+            || { echo "ERROR: Tag must point to a commit on main."; exit 1; }
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
